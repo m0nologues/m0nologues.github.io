@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snap & Doodle</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0f0e17;
+      color: #fffffe;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 28px 16px 40px;
+      gap: 24px;
+    }
+
+    header { text-align: center; }
+    h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.5px; }
+    h1 span { color: #ff8906; }
+    .subtitle { color: #a7a9be; margin-top: 6px; font-size: 0.88rem; }
+
+    /* ── Camera Phase ───────────────────────────────── */
+    #camera-phase {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    #video {
+      display: block;
+      border-radius: 16px;
+      max-width: min(640px, 100%);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+      transform: scaleX(-1); /* mirror selfie view */
+      background: #1a1a2e;
+    }
+
+    .camera-error {
+      background: rgba(229,49,112,0.15);
+      border: 1px solid rgba(229,49,112,0.4);
+      color: #e53170;
+      padding: 14px 20px;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      max-width: 420px;
+      text-align: center;
+      display: none;
+    }
+
+    /* ── Editor Phase ───────────────────────────────── */
+    #editor-phase {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+      max-width: 720px;
+    }
+
+    /* Canvas stack */
+    #canvas-wrapper {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+      line-height: 0;
+      max-width: 100%;
+    }
+
+    #photoCanvas {
+      display: block;
+      max-width: 100%;
+    }
+
+    #drawCanvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    /* ── Toolbar ────────────────────────────────────── */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 8px 10px;
+      background: #1a1a2e;
+      border: 1px solid rgba(255,255,255,0.09);
+      padding: 12px 16px;
+      border-radius: 16px;
+      width: 100%;
+    }
+
+    .t-divider {
+      width: 1px;
+      height: 30px;
+      background: rgba(255,255,255,0.13);
+    }
+
+    /* Color picker */
+    #colorPicker {
+      width: 36px;
+      height: 36px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      cursor: pointer;
+      padding: 2px;
+      background: none;
+      flex-shrink: 0;
+    }
+    #colorPicker:hover { border-color: rgba(255,255,255,0.5); }
+
+    /* Color swatches */
+    .swatches { display: flex; gap: 5px; flex-wrap: wrap; }
+    .swatch {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: transform 0.12s, border-color 0.12s;
+      flex-shrink: 0;
+    }
+    .swatch:hover { transform: scale(1.25); }
+    .swatch.active { border-color: #fff; }
+
+    /* Brush size */
+    .size-group { display: flex; align-items: center; gap: 8px; }
+    #brushSize { width: 80px; accent-color: #ff8906; cursor: pointer; }
+    .size-preview {
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    #brushDot {
+      border-radius: 50%;
+      background: #ff0000;
+      transition: width 0.1s, height 0.1s, background 0.15s;
+      flex-shrink: 0;
+    }
+    #sizeLabel { font-size: 0.78rem; color: #a7a9be; min-width: 28px; }
+
+    /* Tool buttons */
+    .tool-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 8px 13px;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.11);
+      color: #fffffe;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 500;
+      transition: background 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+    .tool-btn:hover { background: rgba(255,255,255,0.14); }
+    .tool-btn.active { background: #ff8906; border-color: #ff8906; color: #0f0e17; }
+
+    /* ── Action buttons ─────────────────────────────── */
+    .actions { display: flex; gap: 10px; }
+
+    .btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 22px;
+      border: none;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s, filter 0.15s;
+    }
+    .btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
+    .btn:active { transform: translateY(0); }
+
+    .btn-snap { background: #ff8906; color: #0f0e17; }
+    .btn-retake { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); color: #fffffe; }
+    .btn-download { background: #e53170; color: #fffffe; }
+
+    .hint { font-size: 0.78rem; color: #a7a9be; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Snap <span>&</span> Doodle</h1>
+    <p class="subtitle">Take a photo · sketch on top · download your art</p>
+  </header>
+
+  <!-- ── Camera Phase ── -->
+  <div id="camera-phase">
+    <video id="video" autoplay playsinline muted></video>
+    <div class="camera-error" id="cameraError">
+      Could not access your camera.<br>
+      Please allow camera permission and reload the page.
+    </div>
+    <button class="btn btn-snap" id="snapBtn">
+      <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3.5"/>
+        <path d="M20 7h-3.4L15 5H9L7.4 7H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+      </svg>
+      Take Photo
+    </button>
+    <p class="hint">Camera stays in your browser — nothing is uploaded</p>
+  </div>
+
+  <!-- ── Editor Phase ── -->
+  <div id="editor-phase">
+
+    <div class="toolbar">
+
+      <!-- Color picker -->
+      <input type="color" id="colorPicker" value="#ff0000" title="Choose color">
+
+      <!-- Swatches -->
+      <div class="swatches" id="swatches">
+        <div class="swatch active" style="background:#ff0000"  data-color="#ff0000"></div>
+        <div class="swatch"        style="background:#ff8906"  data-color="#ff8906"></div>
+        <div class="swatch"        style="background:#f9dc5c"  data-color="#f9dc5c"></div>
+        <div class="swatch"        style="background:#3da35d"  data-color="#3da35d"></div>
+        <div class="swatch"        style="background:#4361ee"  data-color="#4361ee"></div>
+        <div class="swatch"        style="background:#c77dff"  data-color="#c77dff"></div>
+        <div class="swatch"        style="background:#ffffff"  data-color="#ffffff"></div>
+        <div class="swatch"        style="background:#111111"  data-color="#111111"></div>
+      </div>
+
+      <div class="t-divider"></div>
+
+      <!-- Brush size -->
+      <div class="size-group">
+        <div class="size-preview">
+          <div id="brushDot" style="width:6px;height:6px"></div>
+        </div>
+        <input type="range" id="brushSize" min="2" max="48" value="6">
+        <span id="sizeLabel">6px</span>
+      </div>
+
+      <div class="t-divider"></div>
+
+      <!-- Eraser -->
+      <button class="tool-btn" id="eraserBtn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M15.14 3 21 8.86 8.86 21H3v-5.86L15.14 3zm0 2.83L5 15.97V19h3.03L18.17 8.86 15.14 5.83z"/>
+        </svg>
+        Eraser
+      </button>
+
+      <!-- Clear drawings -->
+      <button class="tool-btn" id="clearBtn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+        </svg>
+        Clear
+      </button>
+
+    </div>
+
+    <!-- Canvases -->
+    <div id="canvas-wrapper">
+      <canvas id="photoCanvas"></canvas>
+      <canvas id="drawCanvas"></canvas>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button class="btn btn-retake" id="retakeBtn">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <polyline points="1 4 1 10 7 10"/>
+          <path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
+        </svg>
+        Retake
+      </button>
+      <button class="btn btn-download" id="downloadBtn">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download
+      </button>
+    </div>
+
+  </div>
+
+  <script>
+    /* ─── Elements ─── */
+    const video       = document.getElementById('video');
+    const photoCanvas = document.getElementById('photoCanvas');
+    const drawCanvas  = document.getElementById('drawCanvas');
+    const pCtx        = photoCanvas.getContext('2d');
+    const dCtx        = drawCanvas.getContext('2d');
+    const snapBtn     = document.getElementById('snapBtn');
+    const retakeBtn   = document.getElementById('retakeBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const colorPicker = document.getElementById('colorPicker');
+    const brushSize   = document.getElementById('brushSize');
+    const sizeLabel   = document.getElementById('sizeLabel');
+    const brushDot    = document.getElementById('brushDot');
+    const eraserBtn   = document.getElementById('eraserBtn');
+    const clearBtn    = document.getElementById('clearBtn');
+    const swatchesEl  = document.getElementById('swatches');
+    const cameraPhase = document.getElementById('camera-phase');
+    const editorPhase = document.getElementById('editor-phase');
+    const cameraError = document.getElementById('cameraError');
+
+    /* ─── State ─── */
+    let mediaStream  = null;
+    let drawing      = false;
+    let lastX        = 0;
+    let lastY        = 0;
+    let erasing      = false;
+    let currentColor = '#ff0000';
+
+    /* ─── Camera ─── */
+    async function startCamera() {
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+        });
+        video.srcObject = mediaStream;
+        video.style.display = '';
+        cameraError.style.display = 'none';
+      } catch (err) {
+        console.error(err);
+        video.style.display = 'none';
+        cameraError.style.display = '';
+      }
+    }
+
+    function stopCamera() {
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(t => t.stop());
+        mediaStream = null;
+      }
+    }
+
+    /* ─── Snap photo ─── */
+    snapBtn.addEventListener('click', () => {
+      const w = video.videoWidth  || 640;
+      const h = video.videoHeight || 480;
+
+      photoCanvas.width  = w;
+      photoCanvas.height = h;
+      drawCanvas.width   = w;
+      drawCanvas.height  = h;
+
+      // Draw mirrored photo (matches mirrored video preview)
+      pCtx.save();
+      pCtx.translate(w, 0);
+      pCtx.scale(-1, 1);
+      pCtx.drawImage(video, 0, 0, w, h);
+      pCtx.restore();
+
+      stopCamera();
+      cameraPhase.style.display = 'none';
+      editorPhase.style.display = 'flex';
+    });
+
+    /* ─── Retake ─── */
+    retakeBtn.addEventListener('click', () => {
+      dCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+      setEraser(false);
+      editorPhase.style.display = 'none';
+      cameraPhase.style.display = 'flex';
+      startCamera();
+    });
+
+    /* ─── Drawing helpers ─── */
+    function getPos(e) {
+      const rect  = drawCanvas.getBoundingClientRect();
+      const scaleX = drawCanvas.width  / rect.width;
+      const scaleY = drawCanvas.height / rect.height;
+      const src    = e.touches ? e.touches[0] : e;
+      return {
+        x: (src.clientX - rect.left) * scaleX,
+        y: (src.clientY - rect.top)  * scaleY
+      };
+    }
+
+    function applyStyle() {
+      dCtx.lineWidth   = brushSize.value;
+      dCtx.lineCap     = 'round';
+      dCtx.lineJoin    = 'round';
+      if (erasing) {
+        dCtx.globalCompositeOperation = 'destination-out';
+        dCtx.strokeStyle = 'rgba(0,0,0,1)';
+        dCtx.fillStyle   = 'rgba(0,0,0,1)';
+      } else {
+        dCtx.globalCompositeOperation = 'source-over';
+        dCtx.strokeStyle = currentColor;
+        dCtx.fillStyle   = currentColor;
+      }
+    }
+
+    function onPointerDown(e) {
+      e.preventDefault();
+      drawing = true;
+      const p = getPos(e);
+      lastX = p.x; lastY = p.y;
+      // paint a dot at click point
+      applyStyle();
+      dCtx.beginPath();
+      dCtx.arc(lastX, lastY, brushSize.value / 2, 0, Math.PI * 2);
+      dCtx.fill();
+    }
+
+    function onPointerMove(e) {
+      e.preventDefault();
+      if (!drawing) return;
+      const p = getPos(e);
+      applyStyle();
+      dCtx.beginPath();
+      dCtx.moveTo(lastX, lastY);
+      dCtx.lineTo(p.x, p.y);
+      dCtx.stroke();
+      lastX = p.x; lastY = p.y;
+    }
+
+    function onPointerUp() {
+      drawing = false;
+      dCtx.globalCompositeOperation = 'source-over';
+    }
+
+    drawCanvas.addEventListener('mousedown',  onPointerDown);
+    drawCanvas.addEventListener('mousemove',  onPointerMove);
+    drawCanvas.addEventListener('mouseup',    onPointerUp);
+    drawCanvas.addEventListener('mouseleave', onPointerUp);
+    drawCanvas.addEventListener('touchstart', onPointerDown, { passive: false });
+    drawCanvas.addEventListener('touchmove',  onPointerMove, { passive: false });
+    drawCanvas.addEventListener('touchend',   onPointerUp);
+    drawCanvas.addEventListener('touchcancel',onPointerUp);
+
+    /* ─── Brush size ─── */
+    brushSize.addEventListener('input', updateBrushPreview);
+
+    function updateBrushPreview() {
+      const s = parseInt(brushSize.value);
+      sizeLabel.textContent = s + 'px';
+      const dot = Math.max(3, Math.min(s, 34));
+      brushDot.style.width  = dot + 'px';
+      brushDot.style.height = dot + 'px';
+      brushDot.style.background = erasing ? 'rgba(255,255,255,0.35)' : currentColor;
+    }
+
+    /* ─── Color picker ─── */
+    colorPicker.addEventListener('input', () => {
+      currentColor = colorPicker.value;
+      setEraser(false);
+      clearSwatchActive();
+      updateBrushPreview();
+    });
+
+    /* ─── Swatches ─── */
+    swatchesEl.addEventListener('click', e => {
+      const s = e.target.closest('.swatch');
+      if (!s) return;
+      currentColor = s.dataset.color;
+      colorPicker.value = currentColor;
+      setEraser(false);
+      clearSwatchActive();
+      s.classList.add('active');
+      updateBrushPreview();
+    });
+
+    function clearSwatchActive() {
+      document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+    }
+
+    /* ─── Eraser ─── */
+    eraserBtn.addEventListener('click', () => setEraser(!erasing));
+
+    function setEraser(val) {
+      erasing = val;
+      eraserBtn.classList.toggle('active', erasing);
+      drawCanvas.style.cursor = erasing ? 'cell' : 'crosshair';
+      updateBrushPreview();
+    }
+
+    /* ─── Clear drawings ─── */
+    clearBtn.addEventListener('click', () => {
+      dCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    });
+
+    /* ─── Download ─── */
+    downloadBtn.addEventListener('click', () => {
+      const out  = document.createElement('canvas');
+      out.width  = photoCanvas.width;
+      out.height = photoCanvas.height;
+      const ctx  = out.getContext('2d');
+      ctx.drawImage(photoCanvas, 0, 0);
+      ctx.drawImage(drawCanvas,  0, 0);
+
+      const a = document.createElement('a');
+      a.download = `snap-doodle-${Date.now()}.png`;
+      a.href = out.toDataURL('image/png');
+      a.click();
+    });
+
+    /* ─── Init ─── */
+    updateBrushPreview();
+    startCamera();
+  </script>
+
+</body>
+</html>
